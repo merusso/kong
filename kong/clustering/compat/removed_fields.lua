@@ -74,5 +74,8 @@ return {
       "redis_ssl_verify",
       "redis_server_name",
     },
+    acme = {
+      "account_key",
+    },
   },
 }
