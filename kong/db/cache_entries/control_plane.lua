@@ -353,11 +353,12 @@ end
 
 -- ignore schema clustering_data_planes
 function _M.upsert(schema, entity, old_entity)
-  local entity_name = schema.name
-
-  if entity_name == "clustering_data_planes" then
+  -- clustering_data_planes
+  if schema.db_export == false then
     return true
   end
+
+  local entity_name = schema.name
 
   -- for cache_changes table
   local changed_keys = {}
@@ -462,11 +463,12 @@ function _M.upsert(schema, entity, old_entity)
 end
 
 function _M.delete(schema, entity)
-  local entity_name = schema.name
-
-  if entity_name == "clustering_data_planes" then
+  -- clustering_data_planes
+  if schema.db_export == false then
     return true
   end
+
+  local entity_name = schema.name
 
   local connector = kong.db.connector
   ngx.log(ngx.ERR, "xxx delete from cache_entries: ", entity_name)
