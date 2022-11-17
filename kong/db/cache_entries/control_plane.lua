@@ -139,17 +139,17 @@ end
 -- upstreams|*|@list
 local function gen_workspace_key(schema, entity)
   local keys = {}
-  local entity_name = schema.name
+  local schema_name = schema.name
 
   if not schema.workspaceable then
-    tb_insert(keys, entity_name .. "||@list")
+    tb_insert(keys, schema_name .. "||@list")
     return keys
   end
 
   local ws_id = get_ws_id(schema, entity)
 
-  tb_insert(keys, entity_name .. "|" .. ws_id .. "|@list")
-  tb_insert(keys, entity_name .. "|*|@list")
+  tb_insert(keys, schema_name .. "|" .. ws_id .. "|@list")
+  tb_insert(keys, schema_name .. "|*|@list")
 
   return keys
 end
@@ -157,7 +157,9 @@ end
 -- targets|1e8ff358-fbba-4f32-ac9b-9f896c02b2d8|upstreams|37add863-a3e4-4fcb-9784-bf1d43befdfa|@list
 -- targets|*|upstreams|37add863-a3e4-4fcb-9784-bf1d43befdfa|@list
 local function gen_foreign_key(schema, entity)
-  local foreign_fields = foreigns[schema.name]
+  local schema_name = schema.name
+
+  local foreign_fields = foreigns[schema_name]
 
   if not foreign_fields then
     foreign_fields = {}
@@ -169,10 +171,9 @@ local function gen_foreign_key(schema, entity)
         foreign_fields[fname] = fdata_reference
       end
     end
-    foreigns[schema.name] = foreign_fields
+    foreigns[schema_name] = foreign_fields
   end
 
-  local entity_name = schema.name
   local ws_ids = { "*", get_ws_id(schema, entity) }
 
   local keys = {}
@@ -184,7 +185,7 @@ local function gen_foreign_key(schema, entity)
     end
 
     for _, ws_id in ipairs(ws_ids) do
-      local key = entity_name .. "|" .. ws_id .. "|" .. ref .. "|" ..
+      local key = schema_name .. "|" .. ws_id .. "|" .. ref .. "|" ..
                   fid .. "|@list"
       tb_insert(keys, key)
     end
