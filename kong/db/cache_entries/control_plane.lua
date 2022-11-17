@@ -87,8 +87,9 @@ end
 -- may have many unique_keys
 local function gen_unique_cache_key(schema, entity)
   local db = kong.db
+  local schema_name = schema.name
 
-  local unique_fields = uniques[schema.name]
+  local unique_fields = uniques[schema_name]
   if not unique_fields then
     unique_fields = {}
 
@@ -108,15 +109,15 @@ local function gen_unique_cache_key(schema, entity)
       end
     end -- for schema:each_field()
 
-    uniques[schema.name] = unique_fields
+    uniques[schema_name] = unique_fields
   end
 
   local ws_id = get_ws_id(schema, entity)
 
   local keys = {}
   for i = 1, #unique_fields do
-    local unique = unique_fields[i]
-    local unique_key = entity[unique]
+    local unique_field = unique_fields[i]
+    local unique_key = entity[unique_field]
     if unique_key then
       if type(unique_key) == "table" then
         local _
@@ -124,8 +125,8 @@ local function gen_unique_cache_key(schema, entity)
         _, unique_key = next(unique_key)
       end
 
-      local key = unique_field_key(schema.name, ws_id, unique, unique_key,
-                                   schema.fields[unique].unique_across_ws)
+      local key = unique_field_key(schema.name, ws_id, unique_field, unique_key,
+                                   schema.fields[unique_field].unique_across_ws)
 
       tb_insert(keys, key)
     end
