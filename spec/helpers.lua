@@ -70,6 +70,7 @@ local ssl = require "ngx.ssl"
 local ws_client = require "resty.websocket.client"
 local table_clone = require "table.clone"
 local https_server = require "spec.fixtures.https_server"
+local web_server = require "spec.fixtures.web_server"
 local stress_generator = require "spec.fixtures.stress_generator"
 local resty_signal = require "resty.signal"
 local lfs = require "lfs"
@@ -1729,7 +1730,9 @@ local function wait_for_all_config_update(opts)
   local host = "localhost"
   local port = get_available_port()
 
-  local server = https_server.new(port, host, "http", nil, 1)
+  local server = web_server.new({
+    port = port,
+  })
 
   server:start()
 
