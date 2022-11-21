@@ -37,7 +37,12 @@ function _M.start_local_lambda()
     return nil, "No available port found"
   end
 
-  local ret, err = utils.wait_output("sam local start-lambda --template-file=spec/fixtures/sam-app/template.yaml --port " .. port, "Starting the Local Lambda Service", 180)
+  -- run in background
+  local t = ngx.thread.spawn(function()
+    utils.execute("sam local start-lambda --template-file=spec/fixtures/sam-app/template.yaml --port " .. port)
+  end)
+
+  local ret, err = utils.execute("pgrep sam")
   if err then
     return nil, fmt("Start SAM CLI failed(code: %s): %s", err, ret)
   end
