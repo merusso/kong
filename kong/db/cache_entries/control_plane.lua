@@ -3,6 +3,10 @@ local _M = {}
 
 local utils = require "kong.tools.utils"
 
+local assert = assert
+local pairs = pairs
+local ipairs = ipairs
+local tonumber = tonumber
 local type = type
 local fmt = string.format
 local tb_insert = table.insert

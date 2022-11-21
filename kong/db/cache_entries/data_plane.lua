@@ -4,6 +4,11 @@ local _M = {}
 local constants = require "kong.constants"
 local txn = require "resty.lmdb.transaction"
 
+local ipairs = ipairs
+local tostring = tostring
+local max = math.max
+local min = math.min
+
 local exiting = ngx.worker.exiting
 local unmarshall = require("kong.db.declarative.marshaller").unmarshall
 
@@ -29,7 +34,7 @@ local function load_into_cache(entries)
 
   local latest_revision = 0
   for _, entry in ipairs(entries) do
-    latest_revision = math.max(latest_revision, entry.revision)
+    latest_revision = max(latest_revision, entry.revision)
     ngx.log(ngx.ERR, "xxx revision = ", entry.revision, " key = ", entry.key)
 
     if entry.event and entry.event == 3 then
@@ -119,6 +124,7 @@ local function load_into_cache_with_events_no_lock(entries)
   return true
 end
 
+-- TODO: change to another names
 local DECLARATIVE_LOCK_TTL = 60
 local DECLARATIVE_RETRY_TTL_MAX = 10
 local DECLARATIVE_LOCK_KEY = "declarative:lock"
@@ -131,7 +137,7 @@ function _M.load_into_cache_with_events(entries)
   local ok, err = kong_shm:add(DECLARATIVE_LOCK_KEY, 0, DECLARATIVE_LOCK_TTL)
   if not ok then
     if err == "exists" then
-      local ttl = math.min(kong_shm:ttl(DECLARATIVE_LOCK_KEY), DECLARATIVE_RETRY_TTL_MAX)
+      local ttl = min(kong_shm:ttl(DECLARATIVE_LOCK_KEY), DECLARATIVE_RETRY_TTL_MAX)
       return nil, "busy", ttl
     end
 
