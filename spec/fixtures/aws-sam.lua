@@ -7,6 +7,17 @@ local SAM_CLI_ZIP_URL = "https://github.com/aws/aws-sam-cli/releases/latest/down
 
 local _M = {}
 
+
+--- Get system architecture by uname
+-- @function get_os_architecture
+-- @return architecture string if success, or nil and an error message
+function _M.get_os_architecture()
+  local ret, err = utils.execute("uname -m")
+
+  return ret, err
+end
+
+
 function _M.setup()
   local ret, err = utils.execute("curl -L -s -o /tmp/aws-sam-cli.zip " .. SAM_CLI_ZIP_URL)
   if err then
@@ -38,7 +49,7 @@ function _M.start_local_lambda()
   end
 
   -- run in background
-  local t = ngx.thread.spawn(function()
+  local _ = ngx.thread.spawn(function()
     utils.execute("sam local start-lambda --template-file=spec/fixtures/sam-app/template.yaml --port " .. port)
   end)
 
