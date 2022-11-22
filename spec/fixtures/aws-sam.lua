@@ -38,11 +38,16 @@ function _M.start_local_lambda()
   end
 
   -- run in background
-  local t = ngx.thread.spawn(function()
-    utils.execute("sam local start-lambda --template-file=spec/fixtures/sam-app/template.yaml --port " .. port)
-  end)
+  -- local t = ngx.thread.spawn(function()
+  --   utils.execute("sam local start-lambda --template-file=spec/fixtures/sam-app/template.yaml --port " .. port)
+  -- end)
 
-  local ret, err = utils.execute("pgrep sam")
+  -- local ret, err = utils.execute("pgrep sam")
+  -- if err then
+  --   return nil, fmt("Start SAM CLI failed(code: %s): %s", err, ret)
+  -- end
+
+  local ret, err = utils.execute("sam local start-lambda --template-file=spec/fixtures/sam-app/template.yaml --port " .. port)
   if err then
     return nil, fmt("Start SAM CLI failed(code: %s): %s", err, ret)
   end
