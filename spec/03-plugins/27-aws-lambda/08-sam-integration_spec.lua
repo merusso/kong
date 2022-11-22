@@ -78,10 +78,10 @@ if sam.get_os_architecture() ~= "aarch64" then
           local ret, err = utils.execute("curl http://localhost:" .. sam_port .. "/2015-03-31/functions/HelloWorldFunction/invocations -d '{}'")
           print(inspect(ret), inspect(err))
 
-          assert(helpers.pwait_until(function()
-            local ret, err = utils.wait_output("curl http://localhost:" .. sam_port .. "/2015-03-31/functions/HelloWorldFunction/invocations -d '{}'")
+          helpers.pwait_until(function()
+            local ret, err = utils.wait_output("curl -s http://localhost:" .. sam_port .. "/2015-03-31/functions/HelloWorldFunction/invocations -d '{}'")
             assert.is_nil(err)
-          end, 120))
+          end, 1200)
         end)
 
         it("invoke a simple function", function ()
