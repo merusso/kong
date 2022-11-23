@@ -1,22 +1,34 @@
 local cjson   = require "cjson"
 local helpers = require "spec.helpers"
 
-local https_server = helpers.https_server
+local web_server = require("spec.fixtures.web_server")
 
-
-local test_port1 = helpers.get_available_port()
-local test_port2 = helpers.get_available_port()
-
-
--- create two servers, one double the delay of the other
-local server1 = https_server.new(test_port1, "127.0.0.1", "http", false, nil, 100)
-local server2 = https_server.new(test_port2, "127.0.0.1", "http", false, nil, 200)
 
 for _, strategy in helpers.each_strategy() do
   describe("Balancer: least-connections [#" .. strategy .. "]", function()
     local upstream1_id
+    local server1, server2
+    local test_port1 = helpers.get_available_port()
+    local test_port2 = helpers.get_available_port()
 
     lazy_setup(function()
+      -- create two servers, one double the delay of the other
+      server1 = web_server.new({
+        port = test_port1,
+        host = "127.0.0.1",
+        protocol = "http",
+        delay = 0.1,
+      })
+      server2 = web_server.new({
+        port = test_port2,
+        host = "127.0.0.1",
+        protocol = "http",
+        delay = 0.4,
+      })
+
+      server1:start()
+      server2:start()
+
       local bp = helpers.get_db_utils(strategy, {
         "routes",
         "services",
@@ -59,11 +71,11 @@ for _, strategy in helpers.each_strategy() do
 
     lazy_teardown(function()
       helpers.stop_kong()
+      server1:shutdown()
+      server2:shutdown()
     end)
 
     it("balances by least-connections", function()
-      server1:start()
-      server2:start()
       local thread_max = 100 -- maximum number of threads to use
       local done = false
       local threads = {}
@@ -73,12 +85,12 @@ for _, strategy in helpers.each_strategy() do
           local client = helpers.proxy_client()
           local res = assert(client:send({
             method = "GET",
-            path = "/leastconnections",
+            path = "/",
             headers = {
               ["Host"] = "least1.test"
             },
           }))
-          assert(res.status == 200)
+          assert.same(200, res.status)
           client:close()
         end
       end
@@ -89,7 +101,8 @@ for _, strategy in helpers.each_strategy() do
       end
 
       -- wait while we're executing
-      local finish_at = ngx.now() + 1.5
+      ngx.update_time()
+      local finish_at = ngx.now() + 3
       repeat
         ngx.sleep(0.01)
       until ngx.now() >= finish_at
@@ -100,9 +113,9 @@ for _, strategy in helpers.each_strategy() do
         ngx.thread.wait(threads[i])
       end
 
-      local results1 = server1:shutdown()
-      local results2 = server2:shutdown()
-      local ratio = results1.ok/results2.ok
+      local results1 = #server1:get_logs()
+      local results2 = #server2:get_logs()
+      local ratio = results1 / results2
       assert.near(2, ratio, 1)
       assert.is_not(ratio, 0)
     end)
@@ -187,6 +200,10 @@ for _, strategy in helpers.each_strategy() do
   if strategy ~= "off" then
     describe("Balancer: add and remove a single target to a least-connection upstream [#" .. strategy .. "]", function()
       local bp
+      local test_port = helpers.get_available_port()
+      local server = web_server.new({
+        port = test_port,
+      })
 
       lazy_setup(function()
         bp = helpers.get_db_utils(strategy, {
@@ -196,6 +213,8 @@ for _, strategy in helpers.each_strategy() do
           "targets",
         })
 
+        server:start()
+
         assert(helpers.start_kong({
           database   = strategy,
           nginx_conf = "spec/fixtures/custom_nginx.template",
@@ -203,6 +222,7 @@ for _, strategy in helpers.each_strategy() do
       end)
 
       lazy_teardown(function()
+        server:shutdown()
         helpers.stop_kong()
       end)
 
@@ -220,7 +240,7 @@ for _, strategy in helpers.each_strategy() do
             ["Content-Type"] = "application/json",
           },
           body = {
-            target = "127.0.0.1:" .. test_port1,
+            target = "127.0.0.1:" .. test_port,
             weight = 100
           },
         }))
@@ -239,7 +259,7 @@ for _, strategy in helpers.each_strategy() do
         api_client:close()
         local found = false
         for _, entry in ipairs(body.data) do
-          if entry.target == "127.0.0.1:" .. test_port1 and entry.weight == 100 then
+          if entry.target == "127.0.0.1:" .. test_port and entry.weight == 100 then
             found = true
             break
           end
@@ -250,7 +270,7 @@ for _, strategy in helpers.each_strategy() do
         api_client = helpers.admin_client()
         res, err = api_client:send({
           method = "DELETE",
-          path = "/upstreams/" .. an_upstream.id .. "/targets/127.0.0.1:" .. test_port1,
+          path = "/upstreams/" .. an_upstream.id .. "/targets/127.0.0.1:" .. test_port,
         })
         assert.is_nil(err)
         assert.same(204, res.status)
@@ -267,7 +287,7 @@ for _, strategy in helpers.each_strategy() do
         api_client:close()
         local found = false
         for _, entry in ipairs(body.data) do
-          if entry.target == "127.0.0.1:" .. test_port1 and entry.weight == 0 then
+          if entry.target == "127.0.0.1:" .. test_port and entry.weight == 0 then
             found = true
             break
           end
