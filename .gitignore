@@ -30,3 +30,5 @@ bin/grpcurl
 
 bazel-*
 package/
+spec/fixtures/custom_nginx.template.tmp
+relpath/
