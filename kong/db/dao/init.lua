@@ -22,6 +22,8 @@ local log          = ngx.log
 local fmt          = string.format
 local match        = string.match
 local run_hook     = hooks.run_hook
+local merge_tab    = utils.table_merge
+
 
 
 local ERR          = ngx.ERR
@@ -156,7 +158,7 @@ local function get_pagination_options(self, options)
   options = utils.deep_copy(options, false)
 
   if type(options.pagination) == "table" then
-    options.pagination = utils.table_merge(self.pagination, options.pagination)
+    options.pagination = merge_tab(self.pagination, options.pagination)
 
   else
     options.pagination = self.pagination

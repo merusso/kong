@@ -17,7 +17,7 @@ local function gen_span_id()
   return to_hex(utils.get_rand_bytes(8))
 end
 
-local table_merge = utils.table_merge
+local table_merge = kong.table.merge
 local HTTP_SERVER_PORT = helpers.get_available_port()
 local PROXY_PORT = 9000
 

@@ -1,12 +1,10 @@
 require "kong.plugins.opentelemetry.proto"
 local helpers = require "spec.helpers"
-local utils = require "kong.tools.utils"
 local ngx_re = require "ngx.re"
 local http = require "resty.http"
 
 
 local fmt = string.format
-local table_merge = utils.table_merge
 local split = ngx_re.split
 
 local OTELCOL_HOST = helpers.otelcol_host
@@ -37,7 +35,7 @@ for _, strategy in helpers.each_strategy() do
 
       bp.plugins:insert({
         name = "opentelemetry",
-        config = table_merge({
+        config = kong.table.merge({
           endpoint = fmt("http://%s:%s/v1/traces", OTELCOL_HOST, OTELCOL_HTTP_PORT),
           batch_flush_delay = 0, -- report immediately
         }, config)

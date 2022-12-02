@@ -10,7 +10,7 @@ local insert = table.insert
 local tablepool_fetch = tablepool.fetch
 local tablepool_release = tablepool.release
 local deep_copy = utils.deep_copy
-local table_merge = utils.table_merge
+local merge_tab = kong.table.merge
 
 local POOL_OTLP = "KONG_OTLP"
 local EMPTY_TAB = {}
@@ -119,7 +119,7 @@ do
     end
 
     local default_attributes = default_resource_attributes()
-    resource_attributes = table_merge(default_attributes, attributes)
+    resource_attributes = merge_tab(default_attributes, attributes)
 
     resource_attributes = transform_attributes(resource_attributes)
     attributes_cache[attributes] = resource_attributes
