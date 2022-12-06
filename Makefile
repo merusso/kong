@@ -177,7 +177,6 @@ package/docker/apk: package/apk
 
 package/docker/rpm: package/rpm
 	PACKAGE_TYPE=rpm OPERATING_SYSTEM=redhat\/ubi8-minimal OPERATING_SYSTEM_VERSION=8.6 $(MAKE) package/docker
->>>>>>> a090d8b87 (wip)
 
 package/test/deb: package/deb
 	cd $(KONG_BUILD_TOOLS_LOCATION); \
