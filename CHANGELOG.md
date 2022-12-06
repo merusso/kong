@@ -96,6 +96,8 @@
   parameter that allows the selection of the IMDS protocol version.
   Defaults to `v1`, can be set to `v2` to enable IMDSv2.
   [#9962](https://github.com/Kong/kong/pull/9962)
+- **AWS Lambda**: support scheme config on lambda service api endpoint
+  [#9799](https://github.com/Kong/kong/pull/9799)
 
 ### Fixes
 
