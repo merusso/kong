@@ -15,7 +15,6 @@ local pl_stringio = require "pl.stringio"
 local pl_utils = require "pl.utils"
 local pl_path = require "pl.path"
 local zlib = require "ffi-zlib"
-local pdk_table = require("kong.pdk.table").new()
 
 local C             = ffi.C
 local ffi_fill      = ffi.fill
@@ -40,7 +39,6 @@ local re_match      = ngx.re.match
 local inflate_gzip  = zlib.inflateGzip
 local deflate_gzip  = zlib.deflateGzip
 local stringio_open = pl_stringio.open
-local merge_tab     = pdk_table.merge
 
 ffi.cdef[[
 typedef unsigned char u_char;
@@ -475,7 +473,18 @@ end
 -- @param t2 The second table
 -- @return The (new) merged table
 function _M.table_merge(t1, t2)
-  return merge_tab(t1, t2)
+  local res = {}
+  if t1 then
+    for k,v in pairs(t1) do
+      res[k] = v
+    end
+  end
+  if t2 then
+    for k,v in pairs(t2) do
+      res[k] = v
+    end
+  end
+  return res
 end
 
 --- Checks if a value exists in a table.
