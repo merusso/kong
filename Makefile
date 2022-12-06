@@ -130,10 +130,10 @@ docker/test/unit: docker-compose/run
 	docker-compose exec kong bin/busted -v -o htest spec/01-unit
 
 develop:
-	$(MAKE) build
-	$(MAKE) DOCKER_BUILD_TARGET=develop build
+	$(MAKE) docker/build
+	$(MAKE) DOCKER_BUILD_TARGET=develop docker/build
 
-build:
+docker/build:
 	docker image inspect -f='{{.Id}}' $(DOCKER_BUILD_TARGET)-$(ARCHITECTURE)-$(PACKAGE_TYPE) || \
 	docker buildx build \
 		--build-arg PACKAGE_TYPE=$(PACKAGE_TYPE) \
@@ -146,7 +146,7 @@ build:
 		$(DOCKER_BUILD_OUTPUT) .
 
 package:
-	$(MAKE) build
+	$(MAKE) docker/build
 	$(MAKE) DOCKER_BUILD_TARGET=package DOCKER_BUILD_OUTPUT="-o package" build
 	ls package/
 

@@ -23,7 +23,6 @@ RUN ./install-kong.sh && \
     ./install-test.sh && \
     kong version
 
-
 # COPY --from doesn't support args so use an intermediary image
 FROM build-$ARCHITECTURE-$PACKAGE_TYPE as build-result
 
