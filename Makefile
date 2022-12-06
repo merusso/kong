@@ -42,18 +42,9 @@ KONG_NGINX_MODULE_BRANCH ?= master
 
 PACKAGE_TYPE ?= deb
 
-TAG := $(shell git describe --exact-match --tags HEAD || true)
-
-ifneq ($(TAG),)
-	ISTAG = true
-	KONG_TAG = $(TAG)
-	OFFICIAL_RELEASE = true
-else
-	# we're not building a tag so this is a nightly build
-	RELEASE_DOCKER_ONLY = true
-	OFFICIAL_RELEASE = false
-	ISTAG = false
-endif
+ISTAG = true
+KONG_TAG = $(TAG)
+OFFICIAL_RELEASE = true
 
 release-docker-images:
 	cd $(KONG_BUILD_TOOLS_LOCATION); \
