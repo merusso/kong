@@ -62,6 +62,8 @@ jobs:
         sudo cp -R ./usr/* /usr/
         sudo mkdir -p /usr/local/lib/luarocks/rocks-5.1
         sudo chmod 777 /usr/local/lib/luarocks/rocks-5.1
+        sudo chmod 777 /usr/local/share/lua/5.1
+        sudo chmod 777 /usr/local/lib
 
     - name: Setup tmate session
       uses: mxschmitt/action-tmate@v3
