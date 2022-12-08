@@ -2,7 +2,7 @@ local propagation = require "kong.tracing.propagation"
 
 local to_hex = require "resty.string".to_hex
 
-local merge_tab = require "kong.tools.utils".table_merge
+local table_merge = require "kong.tools.utils".table_merge
 
 local fmt  = string.format
 
@@ -722,7 +722,7 @@ describe("propagation.set", function()
 
     it("sets both the b3 and b3-single headers when a b3-single header is encountered.", function()
       set("b3", "b3-single", proxy_span)
-      assert.same(merge_tab(b3_headers, b3_single_headers), headers)
+      assert.same(table_merge(b3_headers, b3_single_headers), headers)
 
       -- but it generates a warning
       assert.equals(1, #warnings)
@@ -731,7 +731,7 @@ describe("propagation.set", function()
 
     it("sets both the b3 and w3c headers when a w3c header is encountered.", function()
       set("b3", "w3c", proxy_span)
-      assert.same(merge_tab(b3_headers, w3c_headers), headers)
+      assert.same(table_merge(b3_headers, w3c_headers), headers)
 
       -- but it generates a warning
       assert.equals(1, #warnings)
@@ -740,7 +740,7 @@ describe("propagation.set", function()
 
     it("sets both the b3 and w3c headers when a jaeger header is encountered.", function()
       set("b3", "jaeger", proxy_span)
-      assert.same(merge_tab(b3_headers, jaeger_headers), headers)
+      assert.same(table_merge(b3_headers, jaeger_headers), headers)
 
       -- but it generates a warning
       assert.equals(1, #warnings)
@@ -757,7 +757,7 @@ describe("propagation.set", function()
 
     it("sets both the b3 and b3-single headers when a b3 header is encountered.", function()
       set("b3-single", "b3", proxy_span)
-      assert.same(merge_tab(b3_headers, b3_single_headers), headers)
+      assert.same(table_merge(b3_headers, b3_single_headers), headers)
 
       -- but it generates a warning
       assert.equals(1, #warnings)
@@ -766,7 +766,7 @@ describe("propagation.set", function()
 
     it("sets both the b3 and w3c headers when a w3c header is encountered.", function()
       set("b3-single", "w3c", proxy_span)
-      assert.same(merge_tab(b3_single_headers, w3c_headers), headers)
+      assert.same(table_merge(b3_single_headers, w3c_headers), headers)
 
       -- but it generates a warning
       assert.equals(1, #warnings)
@@ -775,7 +775,7 @@ describe("propagation.set", function()
 
     it("sets both the b3 and w3c headers when a w3c header is encountered.", function()
       set("b3-single", "jaeger", proxy_span)
-      assert.same(merge_tab(b3_single_headers, jaeger_headers), headers)
+      assert.same(table_merge(b3_single_headers, jaeger_headers), headers)
 
       -- but it generates a warning
       assert.equals(1, #warnings)
@@ -792,7 +792,7 @@ describe("propagation.set", function()
 
     it("sets both the b3 and w3c headers when a w3c header is encountered.", function()
       set("w3c", "b3", proxy_span)
-      assert.same(merge_tab(b3_headers, w3c_headers), headers)
+      assert.same(table_merge(b3_headers, w3c_headers), headers)
 
       -- but it generates a warning
       assert.equals(1, #warnings)
@@ -801,7 +801,7 @@ describe("propagation.set", function()
 
     it("sets both the b3-single and w3c headers when a b3-single header is encountered.", function()
       set("w3c", "b3-single", proxy_span)
-      assert.same(merge_tab(b3_single_headers, w3c_headers), headers)
+      assert.same(table_merge(b3_single_headers, w3c_headers), headers)
 
       -- but it generates a warning
       assert.equals(1, #warnings)
@@ -810,7 +810,7 @@ describe("propagation.set", function()
 
     it("sets both the jaeger and w3c headers when a b3-single header is encountered.", function()
       set("w3c", "jaeger", proxy_span)
-      assert.same(merge_tab(jaeger_headers, w3c_headers), headers)
+      assert.same(table_merge(jaeger_headers, w3c_headers), headers)
 
       -- but it generates a warning
       assert.equals(1, #warnings)
@@ -827,7 +827,7 @@ describe("propagation.set", function()
 
     it("sets both the b3 and jaeger headers when a jaeger header is encountered.", function()
       set("jaeger", "b3", proxy_span)
-      assert.same(merge_tab(b3_headers, jaeger_headers), headers)
+      assert.same(table_merge(b3_headers, jaeger_headers), headers)
 
       -- but it generates a warning
       assert.equals(1, #warnings)
@@ -836,7 +836,7 @@ describe("propagation.set", function()
 
     it("sets both the b3-single and jaeger headers when a b3-single header is encountered.", function()
       set("jaeger", "b3-single", proxy_span)
-      assert.same(merge_tab(b3_single_headers, jaeger_headers), headers)
+      assert.same(table_merge(b3_single_headers, jaeger_headers), headers)
 
       -- but it generates a warning
       assert.equals(1, #warnings)
@@ -845,7 +845,7 @@ describe("propagation.set", function()
 
     it("sets both the jaeger and w3c headers when a w3c header is encountered.", function()
       set("jaeger", "w3c", proxy_span)
-      assert.same(merge_tab(jaeger_headers, w3c_headers), headers)
+      assert.same(table_merge(jaeger_headers, w3c_headers), headers)
 
       -- but it generates a warning
       assert.equals(1, #warnings)
@@ -854,7 +854,7 @@ describe("propagation.set", function()
 
     it("sets both the jaeger and ot headers when a ot header is encountered.", function()
       set("jaeger", "ot", proxy_span)
-      assert.same(merge_tab(jaeger_headers, ot_headers), headers)
+      assert.same(table_merge(jaeger_headers, ot_headers), headers)
 
       -- but it generates a warning
       assert.equals(1, #warnings)
@@ -871,7 +871,7 @@ describe("propagation.set", function()
 
     it("sets both the b3 and ot headers when a ot header is encountered.", function()
       set("ot", "b3", proxy_span)
-      assert.same(merge_tab(b3_headers, ot_headers), headers)
+      assert.same(table_merge(b3_headers, ot_headers), headers)
 
       -- but it generates a warning
       assert.equals(1, #warnings)
@@ -880,7 +880,7 @@ describe("propagation.set", function()
 
     it("sets both the b3-single and ot headers when a ot header is encountered.", function()
       set("ot", "b3-single", proxy_span)
-      assert.same(merge_tab(b3_single_headers, ot_headers), headers)
+      assert.same(table_merge(b3_single_headers, ot_headers), headers)
 
       -- but it generates a warning
       assert.equals(1, #warnings)
@@ -889,7 +889,7 @@ describe("propagation.set", function()
 
     it("sets both the w3c and ot headers when a ot header is encountered.", function()
       set("ot", "w3c", proxy_span)
-      assert.same(merge_tab(w3c_headers, ot_headers), headers)
+      assert.same(table_merge(w3c_headers, ot_headers), headers)
 
       -- but it generates a warning
       assert.equals(1, #warnings)
@@ -898,7 +898,7 @@ describe("propagation.set", function()
 
     it("sets both the ot and jaeger headers when a jaeger header is encountered.", function()
       set("ot", "jaeger", proxy_span)
-      assert.same(merge_tab(ot_headers, jaeger_headers), headers)
+      assert.same(table_merge(ot_headers, jaeger_headers), headers)
 
       -- but it generates a warning
       assert.equals(1, #warnings)
