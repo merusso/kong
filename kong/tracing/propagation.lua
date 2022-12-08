@@ -1,5 +1,5 @@
 local to_hex = require "resty.string".to_hex
-local merge_tab = require "kong.tools.utils".table_merge
+local table_merge = require "kong.tools.utils".table_merge
 local unescape_uri = ngx.unescape_uri
 local char = string.char
 local match = string.match
@@ -416,7 +416,7 @@ local function parse(headers, conf_header_type)
   local ot_baggage = parse_baggage_headers(headers, OT_BAGGAGE_PATTERN)
   local jaeger_baggage = parse_baggage_headers(headers, JAEGER_BAGGAGE_PATTERN)
   if ot_baggage and jaeger_baggage then
-    baggage = merge_tab(ot_baggage, jaeger_baggage)
+    baggage = table_merge(ot_baggage, jaeger_baggage)
   else
     baggage = ot_baggage or jaeger_baggage or nil
   end
