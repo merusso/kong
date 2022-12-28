@@ -114,6 +114,8 @@
   their consumers fail to process the entries.  Instead, old batches are now dropped
   and an error is logged.
   [#10046](https://github.com/Kong/kong/pull/10046)
+- Fixed an issue where upstream keepalive pool has CRC32 collision.
+  [#9856](https://github.com/Kong/kong/pull/9856)
 
 #### Plugins
 
