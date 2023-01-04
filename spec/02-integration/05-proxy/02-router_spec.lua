@@ -2385,7 +2385,6 @@ for _, strategy in helpers.each_strategy() do
 
   describe("disable enable_debug_header config" , function()
     local proxy_client
-    local route
 
     lazy_setup(function()
       local bp = helpers.get_db_utils(strategy, {
@@ -2396,7 +2395,7 @@ for _, strategy in helpers.each_strategy() do
         "enable-buffering",
       })
 
-      route = bp.routes:insert({
+      bp.routes:insert({
         methods    = { "GET" },
         protocols  = { "http" },
         strip_path = false,
@@ -2411,7 +2410,6 @@ for _, strategy in helpers.each_strategy() do
 
       assert(helpers.start_kong({
         router_flavor = flavor,
-        worker_consistency = consistency,
         database = strategy,
         nginx_worker_processes = 4,
         plugins = "bundled,enable-buffering",
