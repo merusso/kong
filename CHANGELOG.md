@@ -78,6 +78,11 @@
 
 ### Additions
 
+#### Core
+
+- **Plugin**: add an optional field `custom_name` for plugin entity.
+  [#10077](https://github.com/Kong/kong/pull/10077)
+
 #### Plugins
 
 - **Zipkin**: Add support to set the durations of Kong phases as span tags
