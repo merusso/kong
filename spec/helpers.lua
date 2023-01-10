@@ -1678,6 +1678,8 @@ end
 -- @tparam[opt] number forced_admin_port to override the default Admin API port
 -- @tparam[opt] number proxy_client_timeout to override the default timeout setting
 -- @tparam[opt] number forced_proxy_port to override the default proxy port
+-- @tparam[opt=false] boolean override_global_rate_limiting_plugin to override the global rate-limiting plugin in waiting
+-- @tparam[opt=false] boolean override_global_key_auth_plugin to override the global key-auth plugin in waiting
 -- @usage helpers.wait_for_all_config_update()
 local function wait_for_all_config_update(opts)
   opts = opts or {}
@@ -1686,6 +1688,8 @@ local function wait_for_all_config_update(opts)
   local forced_admin_port = opts.forced_admin_port
   local proxy_client_timeout = opts.proxy_client_timeout
   local forced_proxy_port = opts.forced_proxy_port
+  local override_rl = opts.override_global_rate_limiting_plugin or false
+  local override_auth = opts.override_global_key_auth_plugin or false
 
   local function call_admin_api(method, path, body, expected_status)
     local client = admin_client(admin_client_timeout, forced_admin_port)
@@ -1703,7 +1707,7 @@ local function wait_for_all_config_update(opts)
     end
 
     local ok, json_or_nil_or_err = pcall(function ()
-      assert(res.status == expected_status, "unexpected response code")
+      assert(res.status == expected_status, "unexpected response code: " .. res.status)
 
       if string.upper(method) == "DELETE" then
         return
@@ -1722,9 +1726,13 @@ local function wait_for_all_config_update(opts)
   end
 
   local upstream_id, target_id, service_id, route_id
+  local consumer_id, rl_plugin_id, key_auth_plugin_id, credential_id
   local upstream_name = "really.really.really.really.really.really.really.mocking.upstream.com"
   local service_name = "really-really-really-really-really-really-really-mocking-service"
   local route_path = "/really-really-really-really-really-really-really-mocking-route"
+  local key_header_name = "really-really-really-really-really-really-really-mocking-key"
+  local consumer_name = "really-really-really-really-really-really-really-mocking-consumer"
+  local test_credentials = "really-really-really-really-really-really-really-mocking-credentials"
 
   local host = "localhost"
   local port = get_available_port()
@@ -1761,11 +1769,50 @@ local function wait_for_all_config_update(opts)
                        201))
   route_id = res.id
 
+  if override_rl then
+    -- create rate-limiting plugin to mocking mocking service
+    res = assert(call_admin_api("POST",
+                                string.format("/services/%s/plugins", service_id),
+                                { name = "rate-limiting", config = { minute = 999999, policy = "local" } },
+                                201))
+    rl_plugin_id = res.id
+  end
+
+  if override_auth then
+    -- create key-auth plugin to mocking mocking service
+    res = assert(call_admin_api("POST",
+                                string.format("/services/%s/plugins", service_id),
+                                { name = "key-auth", config = { key_names = { key_header_name } } },
+                                201))
+    key_auth_plugin_id = res.id
+
+    -- create consumer
+  res = assert(call_admin_api("POST",
+                              "/consumers",
+                              { username = consumer_name },
+                              201))
+    consumer_id = res.id
+
+  -- create credential to key-auth plugin
+  res = assert(call_admin_api("POST",
+                              string.format("/consumers/%s/key-auth", consumer_id),
+                              { key = test_credentials },
+                              201))
+  credential_id = res.id
+  end
+
   local ok, err = pcall(function ()
     -- wait for mocking route ready
     pwait_until(function ()
       local proxy = proxy_client(proxy_client_timeout, forced_proxy_port)
-      res  = proxy:get(route_path)
+
+      if override_auth then
+        res = proxy:get(route_path, { headers = { [key_header_name] = test_credentials } })
+
+      else
+        res = proxy:get(route_path)
+      end
+
       local ok, err = pcall(assert, res.status == 200)
       proxy:close()
       assert(ok, err)
@@ -1778,6 +1825,16 @@ local function wait_for_all_config_update(opts)
   end
 
   -- delete mocking configurations
+  if override_auth then
+    call_admin_api("DELETE", string.format("/consumers/%s/key-auth/%s", consumer_id, credential_id), nil, 204)
+    call_admin_api("DELETE", string.format("/consumers/%s", consumer_id), nil, 204)
+    call_admin_api("DELETE", "/plugins/" .. key_auth_plugin_id, nil, 204)
+  end
+
+  if override_rl then
+    call_admin_api("DELETE", "/plugins/" .. rl_plugin_id, nil, 204)
+  end
+
   call_admin_api("DELETE", "/routes/" .. route_id, nil, 204)
   call_admin_api("DELETE", "/services/" .. service_id, nil, 204)
   call_admin_api("DELETE", string.format("/upstreams/%s/targets/%s", upstream_id, target_id), nil, 204)
@@ -2823,7 +2880,16 @@ end
 local function clean_prefix(prefix)
   prefix = prefix or conf.prefix
   if pl_path.exists(prefix) then
-    pl_dir.rmtree(prefix)
+    local _, err = pl_dir.rmtree(prefix)
+    -- Note: gojira mount default kong prefix as a volume so itself can't
+    -- be removed; only throw error if the prefix is indeed not empty
+    if err then
+      local fcnt = #assert(pl_dir.getfiles(prefix))
+      local dcnt = #assert(pl_dir.getdirectories(prefix))
+      if fcnt + dcnt > 0 then
+        error(err)
+      end
+    end
   end
 end
 
@@ -3298,87 +3364,59 @@ local function reload_kong(strategy, ...)
 end
 
 
-local clustering_client
-do
-  local wrpc = require("kong.tools.wrpc")
-  local wrpc_proto = require("kong.tools.wrpc.proto")
-  local semaphore = require("ngx.semaphore")
+--- Simulate a Hybrid mode DP and connect to the CP specified in `opts`.
+-- @function clustering_client
+-- @param opts Options to use, the `host`, `port`, `cert` and `cert_key` fields
+-- are required.
+-- Other fields that can be overwritten are:
+-- `node_hostname`, `node_id`, `node_version`, `node_plugins_list`. If absent,
+-- they are automatically filled.
+-- @return msg if handshake succeeded and initial message received from CP or nil, err
+local function clustering_client(opts)
+  assert(opts.host)
+  assert(opts.port)
+  assert(opts.cert)
+  assert(opts.cert_key)
 
-  local wrpc_services
-  local function get_services()
-    if not wrpc_services then
-      wrpc_services = wrpc_proto.new()
-      -- init_negotiation_client(wrpc_services)
-      wrpc_services:import("kong.services.config.v1.config")
-      wrpc_services:set_handler("ConfigService.SyncConfig", function(peer, data)
-        peer.data = data
-        peer.smph:post()
-        return { accepted = true }
-      end)
-    end
+  local c = assert(ws_client:new())
+  local uri = "wss://" .. opts.host .. ":" .. opts.port ..
+              "/v1/outlet?node_id=" .. (opts.node_id or utils.uuid()) ..
+              "&node_hostname=" .. (opts.node_hostname or kong.node.get_hostname()) ..
+              "&node_version=" .. (opts.node_version or KONG_VERSION)
 
-    return wrpc_services
+  local conn_opts = {
+    ssl_verify = false, -- needed for busted tests as CP certs are not trusted by the CLI
+    client_cert = assert(ssl.parse_pem_cert(assert(pl_file.read(opts.cert)))),
+    client_priv_key = assert(ssl.parse_pem_priv_key(assert(pl_file.read(opts.cert_key)))),
+    server_name = "kong_clustering",
+  }
+
+  local res, err = c:connect(uri, conn_opts)
+  if not res then
+    return nil, err
+  end
+  local payload = assert(cjson.encode({ type = "basic_info",
+                                        plugins = opts.node_plugins_list or
+                                                  PLUGINS_LIST,
+                                      }))
+  assert(c:send_binary(payload))
+
+  assert(c:send_ping(string.rep("0", 32)))
+
+  local data, typ, err
+  data, typ, err = c:recv_frame()
+  c:close()
+
+  if typ == "binary" then
+    local odata = assert(utils.inflate_gzip(data))
+    local msg = assert(cjson.decode(odata))
+    return msg
+
+  elseif typ == "pong" then
+    return "PONG"
   end
 
-  --- Simulate a Hybrid mode DP and connect to the CP specified in `opts`.
-  -- @function clustering_client
-  -- @param opts Options to use, the `host`, `port`, `cert` and `cert_key` fields
-  -- are required.
-  -- Other fields that can be overwritten are:
-  -- `node_hostname`, `node_id`, `node_version`, `node_plugins_list`. If absent,
-  -- they are automatically filled.
-  -- @return msg if handshake succeeded and initial message received from CP or nil, err
-  function clustering_client(opts)
-    assert(opts.host)
-    assert(opts.port)
-    assert(opts.cert)
-    assert(opts.cert_key)
-
-    local WS_OPTS = {
-      timeout = opts.clustering_timeout,
-      max_payload_len = opts.cluster_max_payload,
-    }
-
-    local c = assert(ws_client:new(WS_OPTS))
-    local uri = "wss://" .. opts.host .. ":" .. opts.port .. "/v1/wrpc?node_id=" ..
-                (opts.node_id or utils.uuid()) ..
-                "&node_hostname=" .. (opts.node_hostname or kong.node.get_hostname()) ..
-                "&node_version=" .. (opts.node_version or KONG_VERSION)
-
-    local conn_opts = {
-      ssl_verify = false, -- needed for busted tests as CP certs are not trusted by the CLI
-      client_cert = assert(ssl.parse_pem_cert(assert(pl_file.read(opts.cert)))),
-      client_priv_key = assert(ssl.parse_pem_priv_key(assert(pl_file.read(opts.cert_key)))),
-      protocols = "wrpc.konghq.com",
-    }
-
-    conn_opts.server_name = "kong_clustering"
-
-    local ok, err = c:connect(uri, conn_opts)
-    if not ok then
-      return nil, err
-    end
-
-    local peer = wrpc.new_peer(c, get_services())
-
-    peer.smph = semaphore.new(0)
-
-    peer:spawn_threads()
-
-    local resp = assert(peer:call_async("ConfigService.ReportMetadata", {
-      plugins = opts.node_plugins_list or PLUGINS_LIST }))
-
-    if resp.ok then
-      peer.smph:wait(2)
-
-      if peer.data then
-        peer:close()
-        return peer.data
-      end
-    end
-
-    return resp
-  end
+  return nil, "unknown frame from CP: " .. (typ or err)
 end
 
 

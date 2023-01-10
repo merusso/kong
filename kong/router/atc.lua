@@ -59,24 +59,27 @@ local gen_values_t = tb_new(10, 0)
 
 local CACHED_SCHEMA
 do
-  local str_fields = {"net.protocol", "tls.sni",
-                      "http.method", "http.host",
-                      "http.path", "http.raw_path",
-                      "http.headers.*",
-  }
+  local FIELDS = {
 
-  local int_fields = {"net.port",
+    ["String"] = {"net.protocol", "tls.sni",
+                  "http.method", "http.host",
+                  "http.path", "http.raw_path",
+                  "http.headers.*",
+                 },
+
+    ["Int"]    = {"net.port",
+                 },
+
   }
 
   CACHED_SCHEMA = schema.new()
 
-  for _, v in ipairs(str_fields) do
-    assert(CACHED_SCHEMA:add_field(v, "String"))
+  for typ, fields in pairs(FIELDS) do
+    for _, v in ipairs(fields) do
+      assert(CACHED_SCHEMA:add_field(v, typ))
+    end
   end
 
-  for _, v in ipairs(int_fields) do
-    assert(CACHED_SCHEMA:add_field(v, "Int"))
-  end
 end
 
 
@@ -382,22 +385,31 @@ function _M:select(req_method, req_uri, req_host, req_scheme,
 
   for _, field in ipairs(self.fields) do
     if field == "http.method" then
-      assert(c:add_value("http.method", req_method))
+      assert(c:add_value(field, req_method))
 
     elseif field == "http.path" then
-      assert(c:add_value("http.path", req_uri))
+      local res, err = c:add_value(field, req_uri)
+      if not res then
+        return nil, err
+      end
 
     elseif field == "http.host" then
-      assert(c:add_value("http.host", host))
+      local res, err = c:add_value(field, host)
+      if not res then
+        return nil, err
+      end
 
     elseif field == "net.port" then
-     assert(c:add_value("net.port", port))
+     assert(c:add_value(field, port))
 
     elseif field == "net.protocol" then
-      assert(c:add_value("net.protocol", req_scheme))
+      assert(c:add_value(field, req_scheme))
 
     elseif field == "tls.sni" then
-      assert(c:add_value("tls.sni", sni))
+      local res, err = c:add_value(field, sni)
+      if not res then
+        return nil, err
+      end
 
     elseif req_headers and is_http_headers_field(field) then
       local h = field:sub(14)
@@ -405,11 +417,17 @@ function _M:select(req_method, req_uri, req_host, req_scheme,
 
       if v then
         if type(v) == "string" then
-          assert(c:add_value(field, v:lower()))
+          local res, err = c:add_value(field, v:lower())
+          if not res then
+            return nil, err
+          end
 
         else
           for _, v in ipairs(v) do
-            assert(c:add_value(field, v:lower()))
+            local res, err = c:add_value(field, v:lower())
+            if not res then
+              return nil, err
+            end
           end
         end
       end
@@ -531,10 +549,16 @@ function _M:exec(ctx)
 
     local req_scheme = ctx and ctx.scheme or var.scheme
 
-    match_t = self:select(req_method, req_uri, req_host, req_scheme,
+    local err
+    match_t, err = self:select(req_method, req_uri, req_host, req_scheme,
                           nil, nil, nil, nil,
                           sni, headers)
     if not match_t then
+      if err then
+        ngx_log(ngx_ERR, "router returned an error: ", err,
+                         ", 404 Not Found will be returned for the current request")
+      end
+
       self.cache_neg:set(cache_key, true)
       return nil
     end

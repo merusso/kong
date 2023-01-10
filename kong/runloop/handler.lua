@@ -4,11 +4,11 @@ local meta         = require "kong.meta"
 local utils        = require "kong.tools.utils"
 local Router       = require "kong.router"
 local balancer     = require "kong.runloop.balancer"
+local events       = require "kong.runloop.events"
 local reports      = require "kong.reports"
 local constants    = require "kong.constants"
 local certificate  = require "kong.runloop.certificate"
 local concurrency  = require "kong.concurrency"
-local workspaces   = require "kong.workspaces"
 local lrucache     = require "resty.lrucache"
 local marshall     = require "kong.cache.marshall"
 
@@ -42,9 +42,7 @@ local timer_at          = ngx.timer.at
 local subsystem         = ngx.config.subsystem
 local clear_header      = ngx.req.clear_header
 local http_version      = ngx.req.http_version
-local unpack            = unpack
 local escape            = require("kong.tools.uri").escape
-local null              = ngx.null
 
 
 local is_http_module   = subsystem == "http"
@@ -78,7 +76,6 @@ local HOST_PORTS = {}
 
 
 local SUBSYSTEMS = constants.PROTOCOLS_WITH_SUBSYSTEM
-local CLEAR_HEALTH_STATUS_DELAY = constants.CLEAR_HEALTH_STATUS_DELAY
 local TTL_ZERO = { ttl = 0 }
 
 
@@ -548,422 +545,136 @@ local function _set_update_plugins_iterator(f)
 end
 
 
-local function register_balancer_events(core_cache, worker_events, cluster_events)
-  -- target updates
-  -- worker_events local handler: event received from DAO
-  worker_events.register(function(data)
-    local operation = data.operation
-    local target = data.entity
-    -- => to worker_events node handler
-    local ok, err = worker_events.post("balancer", "targets", {
-        operation = operation,
-        entity = target,
-      })
-    if not ok then
-      log(ERR, "failed broadcasting target ",
-        operation, " to workers: ", err)
-    end
-    -- => to cluster_events handler
-    local key = fmt("%s:%s", operation, target.upstream.id)
-    ok, err = cluster_events:broadcast("balancer:targets", key)
-    if not ok then
-      log(ERR, "failed broadcasting target ", operation, " to cluster: ", err)
-    end
-  end, "crud", "targets")
+local reconfigure_handler
+do
+  local now = ngx.now
+  local update_time = ngx.update_time
+  local ngx_worker_id = ngx.worker.id
+  local exiting = ngx.worker.exiting
 
+  local CLEAR_HEALTH_STATUS_DELAY = constants.CLEAR_HEALTH_STATUS_DELAY
 
-  -- worker_events node handler
-  worker_events.register(function(data)
-    local operation = data.operation
-    local target = data.entity
+  -- '0' for compare with nil
+  local CURRENT_ROUTER_HASH   = 0
+  local CURRENT_PLUGINS_HASH  = 0
+  local CURRENT_BALANCER_HASH = 0
 
-    -- => to balancer update
-    balancer.on_target_event(operation, target)
-  end, "balancer", "targets")
+  local function get_now_ms()
+    update_time()
+    return now() * 1000
+  end
 
+  reconfigure_handler = function(data)
+    local worker_id = ngx_worker_id()
 
-  -- cluster_events handler
-  cluster_events:subscribe("balancer:targets", function(data)
-    local operation, key = unpack(utils.split(data, ":"))
-    local entity
-    if key ~= "all" then
-      entity = {
-        upstream = { id = key },
-      }
-    else
-      entity = "all"
-    end
-    -- => to worker_events node handler
-    local ok, err = worker_events.post("balancer", "targets", {
-        operation = operation,
-        entity = entity
-      })
-    if not ok then
-      log(ERR, "failed broadcasting target ", operation, " to workers: ", err)
-    end
-  end)
-
-
-  -- manual health updates
-  cluster_events:subscribe("balancer:post_health", function(data)
-    local pattern = "([^|]+)|([^|]*)|([^|]+)|([^|]+)|([^|]+)|(.*)"
-    local hostname, ip, port, health, id, name = data:match(pattern)
-    port = tonumber(port)
-    local upstream = { id = id, name = name }
-    if ip == "" then
-      ip = nil
-    end
-    local _, err = balancer.post_health(upstream, hostname, ip, port, health == "1")
-    if err then
-      log(ERR, "failed posting health of ", name, " to workers: ", err)
-    end
-  end)
-
-
-  -- upstream updates
-  -- worker_events local handler: event received from DAO
-  worker_events.register(function(data)
-    local operation = data.operation
-    local upstream = data.entity
-    local ws_id = workspaces.get_workspace_id()
-    if not upstream.ws_id then
-      log(DEBUG, "Event crud ", operation, " for upstream ", upstream.id,
-          " received without ws_id, adding.")
-      upstream.ws_id = ws_id
-    end
-    -- => to worker_events node handler
-    local ok, err = worker_events.post("balancer", "upstreams", {
-        operation = operation,
-        entity = upstream,
-      })
-    if not ok then
-      log(ERR, "failed broadcasting upstream ",
-        operation, " to workers: ", err)
-    end
-    -- => to cluster_events handler
-    local key = fmt("%s:%s:%s:%s", operation, data.entity.ws_id, upstream.id, upstream.name)
-    local ok, err = cluster_events:broadcast("balancer:upstreams", key)
-    if not ok then
-      log(ERR, "failed broadcasting upstream ", operation, " to cluster: ", err)
-    end
-  end, "crud", "upstreams")
-
-
-  -- worker_events node handler
-  worker_events.register(function(data)
-    local operation = data.operation
-    local upstream = data.entity
-
-    if not upstream.ws_id then
-      log(CRIT, "Operation ", operation, " for upstream ", upstream.id,
-          " received without workspace, discarding.")
-      return
-    end
-
-    core_cache:invalidate_local("balancer:upstreams")
-    core_cache:invalidate_local("balancer:upstreams:" .. upstream.id)
-
-    -- => to balancer update
-    balancer.on_upstream_event(operation, upstream)
-  end, "balancer", "upstreams")
-
-
-  cluster_events:subscribe("balancer:upstreams", function(data)
-    local operation, ws_id, id, name = unpack(utils.split(data, ":"))
-    local entity = {
-      id = id,
-      name = name,
-      ws_id = ws_id,
-    }
-    -- => to worker_events node handler
-    local ok, err = worker_events.post("balancer", "upstreams", {
-        operation = operation,
-        entity = entity
-      })
-    if not ok then
-      log(ERR, "failed broadcasting upstream ", operation, " to workers: ", err)
-    end
-  end)
-end
-
-
-local function _register_balancer_events(f)
-  register_balancer_events = f
-end
-
-
-local function register_events()
-  -- initialize local local_events hooks
-  local db             = kong.db
-  local core_cache     = kong.core_cache
-  local worker_events  = kong.worker_events
-  local cluster_events = kong.cluster_events
-
-  if db.strategy == "off" then
-
-    -- declarative config updates
-
-    local current_router_hash
-    local current_plugins_hash
-    local current_balancer_hash
-
-    local now = ngx.now
-    local update_time = ngx.update_time
-    local worker_id = ngx.worker.id()
-
-    local exiting = ngx.worker.exiting
-    local function is_exiting()
-      if not exiting() then
-        return false
-      end
+    if exiting() then
       log(NOTICE, "declarative reconfigure was canceled on worker #", worker_id,
                   ": process exiting")
       return true
     end
 
-    worker_events.register(function(data)
-      if is_exiting() then
-        return true
+    local reconfigure_started_at = get_now_ms()
+
+    log(INFO, "declarative reconfigure was started on worker #", worker_id)
+
+    local default_ws
+    local router_hash
+    local plugins_hash
+    local balancer_hash
+
+    if type(data) == "table" then
+      default_ws    = data[1]
+      router_hash   = data[2]
+      plugins_hash  = data[3]
+      balancer_hash = data[4]
+    end
+
+    local ok, err = concurrency.with_coroutine_mutex(RECONFIGURE_OPTS, function()
+      -- below you are encouraged to yield for cooperative threading
+
+      local rebuild_balancer = balancer_hash ~= CURRENT_BALANCER_HASH
+      if rebuild_balancer then
+        log(DEBUG, "stopping previously started health checkers on worker #", worker_id)
+        balancer.stop_healthcheckers(CLEAR_HEALTH_STATUS_DELAY)
       end
 
-      update_time()
-      local reconfigure_started_at = now() * 1000
+      kong.default_workspace = default_ws
+      ngx.ctx.workspace = default_ws
 
-      log(INFO, "declarative reconfigure was started on worker #", worker_id)
+      local router, err
+      if router_hash ~= CURRENT_ROUTER_HASH then
+        local start = get_now_ms()
 
-      local default_ws
-      local router_hash
-      local plugins_hash
-      local balancer_hash
-
-      if type(data) == "table" then
-        default_ws = data[1]
-        router_hash = data[2]
-        plugins_hash = data[3]
-        balancer_hash = data[4]
-      end
-
-      local ok, err = concurrency.with_coroutine_mutex(RECONFIGURE_OPTS, function()
-        -- below you are encouraged to yield for cooperative threading
-
-        local rebuild_balancer = balancer_hash == nil or balancer_hash ~= current_balancer_hash
-        if rebuild_balancer then
-          log(DEBUG, "stopping previously started health checkers on worker #", worker_id)
-          balancer.stop_healthcheckers(CLEAR_HEALTH_STATUS_DELAY)
+        router, err = new_router()
+        if not router then
+          return nil, err
         end
 
-        kong.default_workspace = default_ws
-        ngx.ctx.workspace = default_ws
-
-        local router, err
-        if router_hash == nil or router_hash ~= current_router_hash then
-          update_time()
-          local start = now() * 1000
-
-          router, err = new_router()
-          if not router then
-            return nil, err
-          end
-
-          update_time()
-          log(INFO, "building a new router took ",  now() * 1000 - start,
-                    " ms on worker #", worker_id)
-        end
-
-        local plugins_iterator
-        if plugins_hash == nil or plugins_hash ~= current_plugins_hash then
-          update_time()
-          local start = now() * 1000
-
-          plugins_iterator, err = new_plugins_iterator()
-          if not plugins_iterator then
-            return nil, err
-          end
-
-          update_time()
-          log(INFO, "building a new plugins iterator took ", now() * 1000 - start,
-                    " ms on worker #", worker_id)
-        end
-
-        -- below you are not supposed to yield and this should be fast and atomic
-
-        -- TODO: we should perhaps only purge the configuration related cache.
-
-        log(DEBUG, "flushing caches as part of the reconfiguration on worker #", worker_id)
-
-        kong.core_cache:purge()
-        kong.cache:purge()
-
-        if router then
-          ROUTER = router
-          ROUTER_CACHE:flush_all()
-          ROUTER_CACHE_NEG:flush_all()
-          current_router_hash = router_hash
-        end
-
-        if plugins_iterator then
-          PLUGINS_ITERATOR = plugins_iterator
-          current_plugins_hash = plugins_hash
-        end
-
-        if rebuild_balancer then
-          -- TODO: balancer is a big blob of global state and you cannot easily
-          --       initialize new balancer and then atomically flip it.
-          log(DEBUG, "reinitializing balancer with a new configuration on worker #", worker_id)
-          balancer.init()
-          current_balancer_hash = balancer_hash
-        end
-
-        update_time()
-        log(INFO, "declarative reconfigure took ", now() * 1000 - reconfigure_started_at,
+        log(INFO, "building a new router took ",  get_now_ms() - start,
                   " ms on worker #", worker_id)
-
-        return true
-      end)
-
-      if not ok then
-        update_time()
-        log(ERR, "declarative reconfigure failed after ", now() * 1000 - reconfigure_started_at,
-                 " ms on worker #", worker_id, ": ", err)
       end
-    end, "declarative", "reconfigure")
 
-    return
-  end
+      local plugins_iterator
+      if plugins_hash ~= CURRENT_PLUGINS_HASH then
+        local start = get_now_ms()
 
-  -- events dispatcher
+        plugins_iterator, err = new_plugins_iterator()
+        if not plugins_iterator then
+          return nil, err
+        end
 
-  worker_events.register(function(data)
-    if not data.schema then
-      log(ERR, "[events] missing schema in crud subscriber")
-      return
-    end
-
-    if not data.entity then
-      log(ERR, "[events] missing entity in crud subscriber")
-      return
-    end
-
-    -- invalidate this entity anywhere it is cached if it has a
-    -- caching key
-
-    local cache_key = db[data.schema.name]:cache_key(data.entity)
-    local cache_obj = kong[constants.ENTITY_CACHE_STORE[data.schema.name]]
-
-    if cache_key then
-      cache_obj:invalidate(cache_key)
-    end
-
-    -- if we had an update, but the cache key was part of what was updated,
-    -- we need to invalidate the previous entity as well
-
-    if data.old_entity then
-      local old_cache_key = db[data.schema.name]:cache_key(data.old_entity)
-      if old_cache_key and cache_key ~= old_cache_key then
-        cache_obj:invalidate(old_cache_key)
+        log(INFO, "building a new plugins iterator took ", get_now_ms() - start,
+                  " ms on worker #", worker_id)
       end
-    end
 
-    if not data.operation then
-      log(ERR, "[events] missing operation in crud subscriber")
-      return
-    end
+      -- below you are not supposed to yield and this should be fast and atomic
 
-    -- public worker events propagation
+      -- TODO: we should perhaps only purge the configuration related cache.
 
-    local entity_channel           = data.schema.table or data.schema.name
-    local entity_operation_channel = fmt("%s:%s", entity_channel,
-      data.operation)
+      log(DEBUG, "flushing caches as part of the reconfiguration on worker #", worker_id)
 
-    -- crud:routes
-    local ok, err = worker_events.post_local("crud", entity_channel, data)
-    if not ok then
-      log(ERR, "[events] could not broadcast crud event: ", err)
-      return
-    end
+      kong.core_cache:purge()
+      kong.cache:purge()
 
-    -- crud:routes:create
-    ok, err = worker_events.post_local("crud", entity_operation_channel, data)
-    if not ok then
-      log(ERR, "[events] could not broadcast crud event: ", err)
-      return
-    end
-  end, "dao:crud")
-
-
-  -- local events (same worker)
-
-
-  worker_events.register(function()
-    log(DEBUG, "[events] Route updated, invalidating router")
-    core_cache:invalidate("router:version")
-  end, "crud", "routes")
-
-
-  worker_events.register(function(data)
-    if data.operation ~= "create" and
-      data.operation ~= "delete"
-      then
-      -- no need to rebuild the router if we just added a Service
-      -- since no Route is pointing to that Service yet.
-      -- ditto for deletion: if a Service if being deleted, it is
-      -- only allowed because no Route is pointing to it anymore.
-      log(DEBUG, "[events] Service updated, invalidating router")
-      core_cache:invalidate("router:version")
-    end
-  end, "crud", "services")
-
-
-  worker_events.register(function(data)
-    log(DEBUG, "[events] Plugin updated, invalidating plugins iterator")
-    core_cache:invalidate("plugins_iterator:version")
-  end, "crud", "plugins")
-
-
-  -- SSL certs / SNIs invalidations
-
-
-  worker_events.register(function(data)
-    log(DEBUG, "[events] SNI updated, invalidating cached certificates")
-    local sni = data.old_entity or data.entity
-    local sni_wild_pref, sni_wild_suf = certificate.produce_wild_snis(sni.name)
-    core_cache:invalidate("snis:" .. sni.name)
-
-    if sni_wild_pref then
-      core_cache:invalidate("snis:" .. sni_wild_pref)
-    end
-
-    if sni_wild_suf then
-      core_cache:invalidate("snis:" .. sni_wild_suf)
-    end
-  end, "crud", "snis")
-
-  register_balancer_events(core_cache, worker_events, cluster_events)
-
-
-  -- Consumers invalidations
-  -- As we support conifg.anonymous to be configured as Consumer.username,
-  -- so add an event handler to invalidate the extra cache in case of data inconsistency
-  worker_events.register(function(data)
-    workspaces.set_workspace(data.workspace)
-
-    local old_entity = data.old_entity
-    local old_username
-    if old_entity then
-      old_username = old_entity.username
-      if old_username and old_username ~= null and old_username ~= "" then
-        kong.cache:invalidate(kong.db.consumers:cache_key(old_username))
+      if router then
+        ROUTER = router
+        ROUTER_CACHE:flush_all()
+        ROUTER_CACHE_NEG:flush_all()
+        CURRENT_ROUTER_HASH = router_hash or 0
       end
-    end
 
-    local entity = data.entity
-    if entity then
-      local username = entity.username
-      if username and username ~= null and username ~= "" and username ~= old_username then
-        kong.cache:invalidate(kong.db.consumers:cache_key(username))
+      if plugins_iterator then
+        PLUGINS_ITERATOR = plugins_iterator
+        CURRENT_PLUGINS_HASH = plugins_hash or 0
       end
+
+      if rebuild_balancer then
+        -- TODO: balancer is a big blob of global state and you cannot easily
+        --       initialize new balancer and then atomically flip it.
+        log(DEBUG, "reinitializing balancer with a new configuration on worker #", worker_id)
+        balancer.init()
+        CURRENT_BALANCER_HASH = balancer_hash or 0
+      end
+
+      return true
+    end)  -- concurrency.with_coroutine_mutex
+
+    local reconfigure_time = get_now_ms() - reconfigure_started_at
+
+    if ok then
+      log(INFO, "declarative reconfigure took ", reconfigure_time,
+                " ms on worker #", worker_id)
+
+    else
+      log(ERR, "declarative reconfigure failed after ", reconfigure_time,
+               " ms on worker #", worker_id, ": ", err)
     end
-  end, "crud", "consumers")
+  end -- reconfigure_handler
+end
+
+
+local function register_events()
+  events.register_events(reconfigure_handler)
 end
 
 
@@ -1140,7 +851,6 @@ return {
   _set_update_plugins_iterator = _set_update_plugins_iterator,
   _get_updated_router = get_updated_router,
   _update_lua_mem = update_lua_mem,
-  _register_balancer_events = _register_balancer_events,
 
   init_worker = {
     before = function()
@@ -1636,7 +1346,7 @@ return {
         return kong.response.exit(errcode, body)
       end
 
-      local ok, err = balancer.set_host_header(balancer_data, upstream_scheme, "upstream_host")
+      local ok, err = balancer.set_host_header(balancer_data, upstream_scheme, upstream_host)
       if not ok then
         log(ERR, "failed to set balancer Host header: ", err)
         return exit(500)

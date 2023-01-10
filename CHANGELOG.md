@@ -1,5 +1,7 @@
 # Table of Contents
 
+- [3.1.0](#310)
+- [3.0.1](#301)
 - [3.0.0](#300)
 - [2.8.1](#281)
 - [2.8.0](#280)
@@ -69,6 +71,85 @@
 
 ### Breaking Changes
 
+#### Plugins
+
+- **JWT**: JWT plugin now denies a request that has different tokens in the jwt token search locations.
+  [#9946](https://github.com/Kong/kong/pull/9946)
+
+### Additions
+
+#### Core
+
+- When `router_flavor` is `traditional_compatible`, verify routes created using the
+  Expression router instead of the traditional router to ensure created routes
+  are actually compatible.
+  [#9987](https://github.com/Kong/kong/pull/9987)
+
+#### Plugins
+
+- **Zipkin**: Add support to set the durations of Kong phases as span tags
+  through configuration property `config.phase_duration_flavor`.
+  [#9891](https://github.com/Kong/kong/pull/9891)
+- **HTTP logging**: Suppport value of `headers` to be referenceable.
+  [#9948](https://github.com/Kong/kong/pull/9948)
+- **AWS Lambda**: Add `aws_imds_protocol_version` configuration
+  parameter that allows the selection of the IMDS protocol version.
+  Defaults to `v1`, can be set to `v2` to enable IMDSv2.
+  [#9962](https://github.com/Kong/kong/pull/9962)
+
+### Fixes
+
+#### Core
+
+- Add back Postgres `FLOOR` function when calculating `ttl`, so the returned `ttl` is always a whole integer.
+  [#9960](https://github.com/Kong/kong/pull/9960)
+- Expose postgres connection pool configuration
+  [#9603](https://github.com/Kong/kong/pull/9603)
+- **Template**: Do not add default charset to the `Content-Type` response header when upstream response doesn't contain it.
+  [#9905](https://github.com/Kong/kong/pull/9905)
+- Fix an issue where after a valid declarative configuration is loaded,
+  the configuration hash is incorrectly set to the value: `00000000000000000000000000000000`.
+  [#9911](https://github.com/Kong/kong/pull/9911)
+- Update the batch queues module so that queues no longer grow without bounds if
+  their consumers fail to process the entries.  Instead, old batches are now dropped
+  and an error is logged.
+  [#10046](https://github.com/Kong/kong/pull/10046)
+
+#### Plugins
+
+- **Zipkin**: Fix an issue where the global plugin's sample ratio overrides route-specific.
+  [#9877](https://github.com/Kong/kong/pull/9877)
+- **JWT**: Deny requests that have different tokens in the jwt token search locations. Thanks Jackson 'Che-Chun' Kuo from Latacora for reporting this issue.
+  [#9946](https://github.com/Kong/kong/pull/9946)
+- **Statsd**: Fix a bug in the StatsD plugin batch queue processing where metrics are published multiple times.
+  [#10052](https://github.com/Kong/kong/pull/10052)
+- **Datadog**: Fix a bug in the Datadog plugin batch queue processing where metrics are published multiple times.
+  [#10044](https://github.com/Kong/kong/pull/10044)
+- **OpenTelemetry**: Fix non-compliance to specification for `http.uri` in spans. The field should be full HTTP URI.
+  [#10036](https://github.com/Kong/kong/pull/10036)
+- **OAuth2**: `refresh_token_ttl` is now limited between `0` and `100000000` by schema validator. Previously numbers that are too large causes requests to fail.
+  [#10068](https://github.com/Kong/kong/pull/10068)
+
+### Changed
+
+#### Hybrid Mode
+
+- Revert the removal of WebSocket protocol support for configuration sync,
+  and disable the wRPC protocol.
+  [#9921](https://github.com/Kong/kong/pull/9921)
+
+### Dependencies
+
+- Bumped luarocks from 3.9.1 to 3.9.2
+  [#9942](https://github.com/Kong/kong/pull/9942)
+- Bumped atc-router from 1.0.1 to 1.0.2
+  [#9925](https://github.com/Kong/kong/pull/9925)
+
+
+## 3.1.0
+
+### Breaking Changes
+
 #### Core
 
 - Change the reponse body for a TRACE method from `The upstream server responded with 405`
@@ -91,6 +172,10 @@
   [#9611](https://github.com/Kong/kong/pull/9611)
 - Add support for dynamically changing the log level
   [#9744](https://github.com/Kong/kong/pull/9744)
+- Add `keys` entity to store and manage asymmetric keys.
+  [#9737](https://github.com/Kong/kong/pull/9737)
+- Add `key-sets` entity to group and manage `keys`
+  [#9737](https://github.com/Kong/kong/pull/9737)
 
 #### Plugins
 
@@ -119,6 +204,9 @@
 - **OpenTelemetry**: add referenceable attribute to the `headers` field
   that could be stored in vaults.
   [#9611](https://github.com/Kong/kong/pull/9611)
+- **HTTP-Log**: Support `http_endpoint` field to be referenceable
+  [#9714](https://github.com/Kong/kong/pull/9714)
+
 
 #### Hybrid Mode
 
@@ -131,11 +219,11 @@
 
 #### Performance
 
-- Data plane's connection to control plane is moved to a privileged worker process
-  [#9432](https://github.com/Kong/kong/pull/9432)
 - Increase the default value of `lua_regex_cache_max_entries`, a warning will be thrown
   when there are too many regex routes and `router_flavor` is `traditional`.
   [#9624](https://github.com/Kong/kong/pull/9624)
+- Add batch queue into the Datadog and StatsD plugin to reduce timer usage.
+  [#9521](https://github.com/Kong/kong/pull/9521)
 
 #### PDK
 
@@ -190,6 +278,9 @@
 - Paging size parameter is now propogated to next page if specified
   in current request.
   [#9503](https://github.com/Kong/kong/pull/9503)
+- Non-normalized prefix route path is now rejected. It will also suggest
+  how to write the path in normalized form.
+  [#9760](https://github.com/Kong/kong/pull/9760)
 
 #### PDK
 
@@ -202,6 +293,8 @@
   and body parameter type of `kong.response.exit` to bytes. Note that old
   version of go PDK is incompatible after this change.
   [#9526](https://github.com/Kong/kong/pull/9526)
+- Vault will not call `semaphore:wait` in `init` or `init_worker` phase.
+  [#9851](https://github.com/Kong/kong/pull/9851)
 
 #### Plugins
 
@@ -230,6 +323,14 @@
   does not include `queue_size` and `flush_timeout`.
   [#9789](https://github.com/Kong/kong/pull/9789)
 
+### Changed
+
+#### Hybrid Mode
+
+- The legacy hybrid configuration protocol has been removed in favor of the wRPC
+  protocol introduced in 3.0.
+  [#9740](https://github.com/Kong/kong/pull/9740)
+
 ### Dependencies
 
 - Bumped openssl from 1.1.1q to 1.1.1s
@@ -246,6 +347,32 @@
   [#9626](https://github.com/Kong/kong/pull/9626)
 - Bumped resty.healthcheck from 1.6.1 to 1.6.2
   [#9778](https://github.com/Kong/kong/pull/9778)
+- Bumped pgmoon from 1.15.0 to 1.16.0
+  [#9815](https://github.com/Kong/kong/pull/9815)
+
+
+## [3.0.1]
+
+### Fixes
+
+#### Core
+
+- Fix issue where Zipkin plugin cannot parse OT baggage headers
+  due to invalid OT baggage pattern. [#9280](https://github.com/Kong/kong/pull/9280)
+- Fix issue in `header_filter` instrumentation where the span was not
+  correctly created.
+  [#9434](https://github.com/Kong/kong/pull/9434)
+- Fix issue in router building where when field contains an empty table,
+  the generated expression is invalid.
+  [#9451](https://github.com/Kong/kong/pull/9451)
+- Fix issue in router rebuilding where when paths field is invalid,
+  the router's mutex is not released properly.
+  [#9480](https://github.com/Kong/kong/pull/9480)
+- Fixed an issue where `kong docker-start` would fail if `KONG_PREFIX` was set to
+  a relative path.
+  [#9337](https://github.com/Kong/kong/pull/9337)
+- Fixed an issue with error-handling and process cleanup in `kong start`.
+  [#9337](https://github.com/Kong/kong/pull/9337)
 
 
 ## [3.0.0]
@@ -7604,6 +7731,8 @@ First version running with Cassandra.
 
 [Back to TOC](#table-of-contents)
 
+[3.1.0]: https://github.com/Kong/kong/compare/3.0.1...3.1.0
+[3.0.1]: https://github.com/Kong/kong/compare/3.0.0...3.0.1
 [3.0.0]: https://github.com/Kong/kong/compare/2.8.1...3.0.0
 [2.8.1]: https://github.com/Kong/kong/compare/2.8.0...2.8.1
 [2.8.0]: https://github.com/Kong/kong/compare/2.7.0...2.8.0
