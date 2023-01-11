@@ -145,6 +145,9 @@
   [#9737](https://github.com/Kong/kong/pull/9737)
 - Add `key-sets` entity to group and manage `keys`
   [#9737](https://github.com/Kong/kong/pull/9737)
+- Add `debug` option to kong config headers to set `kong-debug`
+  feature, default behavior setting to off
+  [#10054]https://github.com/Kong/kong/pull/10054)
 
 #### Plugins
 

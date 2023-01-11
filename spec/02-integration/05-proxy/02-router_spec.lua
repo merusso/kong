@@ -2415,7 +2415,6 @@ for _, strategy in helpers.each_strategy() do
         nginx_worker_processes = 4,
         plugins = "bundled,enable-buffering",
         nginx_conf = "spec/fixtures/custom_nginx.template",
-        }
       }))
     end)
 
