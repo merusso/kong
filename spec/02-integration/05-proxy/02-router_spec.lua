@@ -159,6 +159,7 @@ for _, strategy in helpers.each_strategy() do
         plugins = "bundled,enable-buffering",
         nginx_conf = "spec/fixtures/custom_nginx.template",
         stream_listen = string.format("127.0.0.1:%d ssl", stream_tls_listen_port),
+        headers = "server_tokens, latency_tokens, debug",
       }, nil, nil, fixtures))
     end)
 

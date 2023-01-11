@@ -117,7 +117,8 @@ local constants = {
     FORWARDED_PREFIX = "X-Forwarded-Prefix",
     ANONYMOUS = "X-Anonymous-Consumer",
     VIA = "Via",
-    SERVER = "Server"
+    SERVER = "Server",
+    DEBUG = "debug",
   },
   -- Notice that the order in which they are listed is important:
   -- schemas of dependencies need to be loaded first.
