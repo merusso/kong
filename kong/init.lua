@@ -433,9 +433,9 @@ local function flush_delayed_response(ctx)
     return -- avoid tail call
   end
 
-  kong.response.exit(ctx.delayed_response.status_code,
-                     ctx.delayed_response.content,
-                     ctx.delayed_response.headers)
+  kong.response.error(ctx.delayed_response.status_code,
+                      ctx.delayed_response.content,
+                      ctx.delayed_response.headers)
 end
 
 
@@ -1005,7 +1005,7 @@ function Kong.access()
 
     ctx.buffered_proxying = nil
 
-    return kong.response.exit(503, { message = "no Service found with those values"})
+    return kong.response.error(503, "no Service found with those values")
   end
 
   runloop.access.after(ctx)
