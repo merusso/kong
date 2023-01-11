@@ -52,17 +52,22 @@ for _, strategy in helpers.each_strategy() do
         port = helpers.mock_upstream_port,
       })
 
-      bp.routes:insert({ service = http_srv,
-                         protocols = { "http" },
-                         paths = { "/" }})
+      local route = assert(bp.routes:insert({ service = http_srv,
+                                              protocols = { "http" },
+                                              paths = { "/" }}))
 
-      bp.plugins:insert({
+      assert(bp.routes:insert({ service = http_srv,
+                                protocols = { "http" },
+                                paths = { "/no_plugin" }}))
+
+      assert(bp.plugins:insert({
         name = "opentelemetry",
+        route = route,
         config = table_merge({
           endpoint = "http://127.0.0.1:" .. HTTP_SERVER_PORT,
           batch_flush_delay = 0, -- report immediately
         }, config)
-      })
+      }))
 
       assert(helpers.start_kong({
         proxy_listen = "0.0.0.0:" .. PROXY_PORT,
@@ -137,6 +142,52 @@ for _, strategy in helpers.each_strategy() do
 
         local scope_spans = decoded.resource_spans[1].scope_spans
         assert.is_true(#scope_spans > 0, scope_spans)
+      end)
+    end)
+
+    describe("#scoping", function ()
+      lazy_setup(function()
+        bp, _ = assert(helpers.get_db_utils(strategy, {
+          "services",
+          "routes",
+          "plugins",
+        }, { "opentelemetry" }))
+
+        setup_instrumentations("all", {
+          headers = {
+            ["X-Access-Token"] = "token",
+          },
+        })
+      end)
+
+      lazy_teardown(function()
+        helpers.stop_kong()
+        helpers.kill_http_server(HTTP_SERVER_PORT)
+      end)
+
+      it("works", function ()
+        local thread = helpers.http_server(HTTP_SERVER_PORT, { timeout = 10 })
+        local cli = helpers.proxy_client(7000, PROXY_PORT)
+        local r = assert(cli:send {
+          method  = "GET",
+          path    = "/no_plugin",
+        })
+        assert.res_status(200, r)
+        r = assert(cli:send {
+          method  = "GET",
+          path    = "/no_exist",
+        })
+        assert.res_status(404, r)
+
+        -- close client connection
+        cli:close()
+
+        local ok, err = thread:join()
+
+        ngx.sleep(1000)
+        -- we should have no telemetry reported
+        assert.is_falsy(ok)
+        assert.same(err, "timeout")
       end)
     end)
 
@@ -284,7 +335,6 @@ for _, strategy in helpers.each_strategy() do
           local body = fd:read("*a")
           pb_set = ngx_re.split(body, "\n")
 
-          print("pb set length: ", #pb_set)
           local count = 0
           for _, pb_data in ipairs(pb_set) do
             local decoded = assert(pb.decode("opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest", ngx.decode_base64(pb_data)))
