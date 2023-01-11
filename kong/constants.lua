@@ -116,7 +116,6 @@ local constants = {
     FORWARDED_PATH = "X-Forwarded-Path",
     FORWARDED_PREFIX = "X-Forwarded-Prefix",
     ANONYMOUS = "X-Anonymous-Consumer",
-    DEBUG = "kong-debug",
     VIA = "Via",
     SERVER = "Server"
   },
