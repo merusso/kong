@@ -157,7 +157,7 @@ for _, strategy in helpers.each_strategy() do
           headers = {
             ["X-Access-Token"] = "token",
           },
-        })
+        }, nil, true)
       end)
 
       lazy_teardown(function()
