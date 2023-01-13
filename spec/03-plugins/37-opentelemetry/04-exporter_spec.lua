@@ -45,7 +45,7 @@ for _, strategy in helpers.each_strategy() do
     end)
 
     -- helpers
-    local function setup_instrumentations(types, config, fixtures)
+    local function setup_instrumentations(types, config, fixtures, router_scoped)
       local http_srv = assert(bp.services:insert {
         name = "mock-service",
         host = helpers.mock_upstream_host,
@@ -62,7 +62,7 @@ for _, strategy in helpers.each_strategy() do
 
       assert(bp.plugins:insert({
         name = "opentelemetry",
-        route = route,
+        route = router_scoped and route,
         config = table_merge({
           endpoint = "http://127.0.0.1:" .. HTTP_SERVER_PORT,
           batch_flush_delay = 0, -- report immediately
@@ -184,7 +184,6 @@ for _, strategy in helpers.each_strategy() do
 
         local ok, err = thread:join()
 
-        ngx.sleep(1000)
         -- we should have no telemetry reported
         assert.is_falsy(ok)
         assert.same(err, "timeout")
